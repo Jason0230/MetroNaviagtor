@@ -48,16 +48,6 @@
 			path = Metro;
 			sourceTree = "<group>";
 		};
-		82F0E5252CBDF4AC0065BC5F /* MetroTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MetroTests;
-			sourceTree = "<group>";
-		};
-		82F0E52F2CBDF4AC0065BC5F /* MetroUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MetroUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,8 +79,6 @@
 			isa = PBXGroup;
 			children = (
 				82F0E5142CBDF4AA0065BC5F /* Metro */,
-				82F0E5252CBDF4AC0065BC5F /* MetroTests */,
-				82F0E52F2CBDF4AC0065BC5F /* MetroUITests */,
 				82F0E5132CBDF4AA0065BC5F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -143,9 +131,6 @@
 			dependencies = (
 				82F0E5242CBDF4AC0065BC5F /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				82F0E5252CBDF4AC0065BC5F /* MetroTests */,
-			);
 			name = MetroTests;
 			packageProductDependencies = (
 			);
@@ -165,9 +150,6 @@
 			);
 			dependencies = (
 				82F0E52E2CBDF4AC0065BC5F /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				82F0E52F2CBDF4AC0065BC5F /* MetroUITests */,
 			);
 			name = MetroUITests;
 			packageProductDependencies = (
