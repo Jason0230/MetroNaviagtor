@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need your location to notify you about metro stops even in the background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to notify you about metro stops even in the background.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location while the app is open.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>We need access to your motion data to track your movement for the metro station navigation.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string></string>
+		<string>location</string>
+	</array>
+</dict>
+</plist>
