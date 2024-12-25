@@ -1,22 +1,15 @@
-//
-//  Map.swift
-//  Metro
-//
-//  Created by Jason Li on 11/22/24.
-//
-
 class MetroMap {
     //fields
     var metroMap: [String : Station] = [:]
     var trainsColor: [String : [String]] = [:]
     
 
-    
+    //constructor to initialize the metro map
     init() {
         populateStation()
     }
     
-    
+    //creates the graph for the metro stations
     private func populateStation(){
         //adds the green line
         let greenLine: [String] = ["Greenbelt", "College Park-U of Md", "Hyattsville Crossing", "West Hyattsville",
@@ -77,8 +70,9 @@ class MetroMap {
         addStations(stations:blueLine, color:"Blue", trainName:"Franconia-Springfield", otherTrainName: "Downtown Largo");
     }
     
+    //creates neighbors
     private func addStations(stations: [String], color: String, trainName: String, otherTrainName: String){
-        
+        //adds the colors for the train that you are going to ride.
         trainsColor[trainName, default: []].append(color)
         trainsColor[otherTrainName, default: []].append(color)
         
@@ -97,6 +91,7 @@ class MetroMap {
         }
     }
     
+    //returns the shortest path with the least amount of train switching between two points
     public func getShortestPath(start: String, end:String) -> [Station]?{
         
         //checks if the stations exists
@@ -134,10 +129,10 @@ class MetroMap {
             }
             
             //Finding the shortest Path
-            
             var minIndex: Int = -1
             var minWeight: Int = Int.max
             
+            //get the minimum
             for i in 0..<paths.count{
                 if weights[i] < minWeight{
                     minWeight = weights[i]
@@ -149,11 +144,13 @@ class MetroMap {
                 return nil
             }
             
+            //returns the path with the minimum weight (best path)
             return paths[minIndex]
         }
         return nil
     }
     
+    //gets the trains you need to take for the path
     public func getTrainPath(path: [Station]) -> [String]{
         if (path.count <= 1){
             return ["Already at destination"]
@@ -161,10 +158,14 @@ class MetroMap {
         
         var result: [String] = []
         
+        //the common trains between two stations
         var trainsAllowed:[String] = onlyTrains(list: path[0].neighbors[path[1]]!)
+        //the frequency of the numnber of trains that are available to take with the one with the maximum value being the best train to take could be multiple
         var freqTrain: [String:Int] = [:]
         
+        //starting train
         var start: String = path[0].name
+        //starting color
         var startColor: [String] = onlyColors(list: (metroMap[start]?.neighbors[path[1]])!)
         
         for i in 0..<path.count-1{
@@ -174,28 +175,30 @@ class MetroMap {
             if !contains(list1: trainsAllowed, list2: currentTrain){
                 let endColor: [String] = onlyColors(list: (metroMap[path[i-1].name]?.neighbors[path[i]])!)
                 
-                result.append(contentsOf: createTrainPathString(freq: freqTrain, colors: common(set1: startColor, set2: endColor), start: start, end: path[i].name))
+                result.append(createTrainPathString(freq: freqTrain, colors: common(set1: startColor, set2: endColor), start: start, end: path[i].name))
                 
-                //reset other var
+                //reset the other variables
                 freqTrain = [:]
                 startColor = onlyColors(list: (metroMap[path[i].name]?.neighbors[path[i+1]])!)
                 start = path[i].name
                 trainsAllowed = currentTrain
             }
             
+            //update the variables
             freqTrain = updateFreq(freq: freqTrain, list: currentTrain)
             trainsAllowed = common(set1: trainsAllowed, set2: currentTrain)
         }
         
+        //add the last path
         let endColor: [String] = onlyColors(list: (metroMap[path[path.count-2].name]?.neighbors[path[path.count-1]])!)
         
-        result.append(contentsOf: createTrainPathString(freq: freqTrain, colors: common(set1: startColor, set2: endColor), start: start, end: path[path.count-1].name))
+        result.append(createTrainPathString(freq: freqTrain, colors: common(set1: startColor, set2: endColor), start: start, end: path[path.count-1].name))
         
         return result
         
     }
     
-    private func createTrainPathString(freq: [String:Int], colors: [String], start: String, end: String) -> [String]{
+    private func createTrainPathString(freq: [String:Int], colors: [String], start: String, end: String) -> String {
         
         let max: Int = getMaxFromMap(freq: freq)
         var stations: [String] = []
@@ -207,25 +210,26 @@ class MetroMap {
             }
         }
         
-        var res: [String] = []
         var result: String = ""
         
+        //creates the string that tells the users what trains to
         for s in stations{
             let common: [String] = common(set1: colors, set2: trainsColor[s]!)
             result += toString(list:common) + " " + s + " or "
         }
         
         result.removeLast(4)
+        //and adds the separating to the destination for the later method to make it a map
         result += " Train|\(end)"
         
-        res.append(result)
-        return res
+        return result
     }
     
-    public func getOrderedSwapTrainPath(list: [String]) -> [Station]{
+    //for other class use to get the order that the user needs to swap trains and when for a specific path
+    public func getOrderedSwapTrainPath(path: [String]) -> [Station]{
         var result: [Station] = []
         
-        for s in list{
+        for s in path{
             if let index = s.firstIndex(of: "|"){
                 let indexAfter = s.index(after: index)
                 result.append(metroMap[String(s[indexAfter...])]!)
@@ -234,12 +238,14 @@ class MetroMap {
         return result
     }
     
-    public func getStationsToSwitchMap(list: [String]) -> [Station: String]{
+    //for other class use to get the trains that they could swap to for a specific train swap
+    public func getStationsToSwitchMap(path: [String]) -> [Station: String] {
         var result: [Station: String] = [:]
         
-        for s in list{
+        for s in path{
             if let index = s.firstIndex(of: "|"){
                 let indexAfter = s.index(after: index)
+                //separates the string into keys and values
                 result[metroMap[String(s[indexAfter...])]!] = String(s[..<index])
             }
         }
@@ -247,9 +253,11 @@ class MetroMap {
         return result
     }
     
+    //initialize the color map to get the emoji corresponding to the color
     private let colorMap:[String: String] = ["Silver":"🪙", "Orange":"🟠", "Yellow": "🟡",
         "Green":"🟢", "Red": "🔴", "Blue":"🔵"]
     
+    //The same name trains could have multiple colors so use a list and add all colors
     private func toString(list: [String]) -> String{
         var result: String = ""
         for i in list{
@@ -258,6 +266,7 @@ class MetroMap {
         return result
     }
     
+    //gets the maximum value from a map used for the freq map
     private func getMaxFromMap(freq: [String: Int]) -> Int{
         var max: Int = -1
         
@@ -274,51 +283,67 @@ class MetroMap {
         //make freq mutable
         var freq = freq
         
+        //loop the list to increase the freq
         for s in list{
+            //value already exists in the map
             if let value = freq[s]{
                 freq[s] = value + 1
             }
+            //doesn't exist create a new key
             else{
                 freq[s] = 1
             }
         }
+        
         return freq
     }
     
+    //gets the weights of the path given
     private func getWeightOfPath(path: [Station?]) -> Int{
+        //edge case
         if path.isEmpty{
             return Int.max
         }
-        else if path.count == 1{
+        //only one station away weight is 1, need a if condition because we need to check two stations at a time
+        if path.count == 1{
             return 1
         }
         
+        //weight of the path
         var weight: Int = 0
+        //colors allowed determines the current color that the train could be and allows to detect if a train swap is needed
         var colorsAllowed: [String]
         
         if let neighborList = path[0]?.neighbors[path[1]!]{
+            //sets the first colors allowed to the first two stations
             colorsAllowed = onlyColors(list:neighborList)
+            weight += 1
             
-        
-            for i in 1..<path.count-1{
+            //loop to update the weights and current allowed colors
+            for i in 1..<path.count-1 {
                 if let getPathColor = path[i]?.neighbors[path[i+1]!]{
                     let currLineColor = onlyColors(list: getPathColor)
                     
                     //no matching colors meaning line switch
                     if (!contains(list1: colorsAllowed, list2: currLineColor)){
+                        //resets to the next allowed colors
                         colorsAllowed = currLineColor
+                        
+                        //train switching penalty
                         weight += 100
                     }
                     
+                    //the allowed colors (train) will be the commality between the both
                     colorsAllowed = common(set1: colorsAllowed, set2: currLineColor)
                     weight += 1
                 }
-                
             }
         }
+        
         return weight
     }
     
+    //the string to split between two sections with the train name and color separates the strings
     private func onlyColors(list: [String]) -> [String]{
         var result: [String] = []
         
@@ -344,6 +369,7 @@ class MetroMap {
         return result
     }
     
+    //returns the common values between two lists
     private func common(set1: [String], set2: [String]) -> [String]{
         var list: [String] = []
         
@@ -355,6 +381,7 @@ class MetroMap {
         return list
     }
     
+    //returns true if the list has at least one commonality
     private func contains(list1: [String], list2: [String]) -> Bool{
         for e in list1{
             if (list2.contains(e)){
@@ -364,7 +391,7 @@ class MetroMap {
         return false
     }
     
-    
+    //toString for a list of Stations
     public static func convertToString(list: [Station?]?) -> [String]{
         var result: [String] = []
         
@@ -375,7 +402,7 @@ class MetroMap {
     }
 }
 
-//class for each station
+//inner class for the Station
 class Station: Hashable, CustomStringConvertible {
     //field variables
     var name: String = ""
@@ -412,8 +439,5 @@ class Station: Hashable, CustomStringConvertible {
             neighbors[neighbor]?.append("\(color)|\(trainName)")
             neighbor.neighbors[self]?.append("\(color)|\(otherTrainName)")
         }
-
-        
-        
     }
 }

@@ -6,7 +6,7 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
     
     //Location manager / Gps usage
     private var locationManager = CLLocationManager()
-
+    
     @Published var location: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus?
     
@@ -30,7 +30,7 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
     //timeStamp for motion calculations
     private var lastTimeStamp: TimeInterval = Date().timeIntervalSince1970
     
-    private override init(){
+    private override init() {
         super.init()
         
         locationManager.delegate = self
@@ -40,10 +40,9 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
         
         //determines how frequent the accelerometer and gyroscope is updating
         motionManager.deviceMotionUpdateInterval = 0.001
-        
-
     }
     
+    //singleton
     static let shared = LocationManager()
     
     func requestAuthorization() {
@@ -52,14 +51,15 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-            authorizationStatus = manager.authorizationStatus
-
-            if authorizationStatus == .authorizedWhenInUse {
-                // If granted "When In Use," request "Always" access
-                locationManager.requestAlwaysAuthorization()
-            }
+        authorizationStatus = manager.authorizationStatus
+        
+        if authorizationStatus == .authorizedWhenInUse {
+            // If granted "When In Use," request "Always" access
+            locationManager.requestAlwaysAuthorization()
         }
+    }
     
+    //starts getting user location and motion
     func startUpdatingLocation() {
         locationManager.startUpdatingLocation()
         
@@ -69,13 +69,12 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
             self.trackOrientation(motion: deviceMotion)
         }
     }
-    
+    //stops getting user location and motion
     func stopUpdatingLocation(){
         locationManager.stopUpdatingLocation()
-        
         motionManager.stopDeviceMotionUpdates()
     }
-        
+    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]){
         guard let newLocation = locations.last else { return }
         
@@ -83,10 +82,11 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
         DispatchQueue.main.async {
             self.location = newLocation
         }
-
+        
         updateInfo()
     }
     
+    //updates the location manager information
     private func updateInfo(){
         gpsSpeed = max(location?.speed ?? 0, 0)
         
@@ -95,104 +95,128 @@ class LocationManager: NSObject, CLLocationManagerDelegate, ObservableObject {
         }
         
         //for notifications
-        Navigation.shared.returnStatus()
-
+        Navigation.shared.updateStatus()
     }
     
-    
+    //uses the gyroscope to adjust the accelerometer's x y and z components
     private func trackOrientation(motion: CMDeviceMotion) {
         // Get rotation matrix to adjust accelerometer readings based on device's orientation
         rotationMatrix = motion.attitude.rotationMatrix
+        
         // Adjust the accelerometer readings (X, Y, Z) based on the rotation matrix
         let adjustedAccelerationX = motion.userAcceleration.x * rotationMatrix.m11 +
-                                    motion.userAcceleration.y * rotationMatrix.m12 +
-                                    motion.userAcceleration.z * rotationMatrix.m13
-
+        motion.userAcceleration.y * rotationMatrix.m12 +
+        motion.userAcceleration.z * rotationMatrix.m13
+        
         let adjustedAccelerationY = motion.userAcceleration.x * rotationMatrix.m21 +
-                                    motion.userAcceleration.y * rotationMatrix.m22 +
-                                    motion.userAcceleration.z * rotationMatrix.m23
-
+        motion.userAcceleration.y * rotationMatrix.m22 +
+        motion.userAcceleration.z * rotationMatrix.m23
+        
         let adjustedAccelerationZ = motion.userAcceleration.x * rotationMatrix.m31 +
-                                    motion.userAcceleration.y * rotationMatrix.m32 +
-                                    motion.userAcceleration.z * rotationMatrix.m33
-
+        motion.userAcceleration.y * rotationMatrix.m32 +
+        motion.userAcceleration.z * rotationMatrix.m33
+        
         // Create an adjusted accelerometer object with all components
         let adjustedAcceleration = CMAcceleration(x: adjustedAccelerationX,
                                                   y: adjustedAccelerationY,
                                                   z: adjustedAccelerationZ)
-
+        
         // Update the distance using adjusted acceleration data
         updateMotionValues(acceleration: adjustedAcceleration)
     }
     
-    
+    //updates the motion values using the adjusted accelertion from the gyroscope
     private func updateMotionValues(acceleration: CMAcceleration){
+        //get the difference in time
         let currentTimeStamp = Date().timeIntervalSince1970
-        let deltaTime = currentTimeStamp - lastTimeStamp
-        
-        
-        //CCMotion's accleration is in G - 9.81 m/s^2
-        let convertedAcceleration = CMAcceleration(x: acceleration.x * 9.81, y: acceleration.y * 9.81, z: acceleration.z * 9.81)
-        
-        // Reset when deltaTime is too large (or in the beginning)
-        let acceleration = detectShake(acceleration: convertedAcceleration)
-        resetVelocityIfStationary(acceleration: acceleration)
-
-        motionVelocity.x += acceleration.x * deltaTime
-        motionVelocity.y += acceleration.y * deltaTime
-        motionVelocity.z += acceleration.z * deltaTime
-        
-        
-        motionDistanceTraveled += magnitude(value: (x: motionVelocity.x, y: motionVelocity.y, z: motionVelocity.z)) * deltaTime
-    
-        self.motionSpeed = magnitude(value: (x: motionVelocity.x, y: motionVelocity.y, z: motionVelocity.z))
-        self.motionAcceleration = (x: acceleration.x, y: acceleration.y, z: acceleration.z)
+        let dt = currentTimeStamp - lastTimeStamp
         lastTimeStamp = currentTimeStamp
+        
+        
+        //multiply by 9.81 because CMMotion's acceleration is in units of G to get it in m/s^2
+        //and adds a low pass filter to smooth out shaking and high filter to filter small noise
+        self.motionAcceleration = filterAcceleration(newAcceleration: (acceleration.x, acceleration.y, acceleration.z))
+    
+        //increase the velocity values after the accelertion filters
+        motionVelocity.x += motionAcceleration.x * dt
+        motionVelocity.y += motionAcceleration.y * dt
+        motionVelocity.z += motionAcceleration.z * dt
+        
+        //removes small noise
+        removeVelocityNoise(threshold: 0.01)
+        
+        //gradually reduces the velocity when acceleration is near zero
+        reduceVelocityIfStationary(dt: dt);
+        
+        //update the speed
+        self.motionSpeed = magnitude(value: (x: motionVelocity.x, y: motionVelocity.y, z: motionVelocity.z))
+        
+        //update the distance traveled using the updated speed
+        motionDistanceTraveled += motionSpeed * dt
     }
     
-     func resetValuesForNextTrip(){
+    //reset the distance traveled
+    func resetValuesForNextTrip(){
         motionDistanceTraveled = 0
     }
     
-    private func resetVelocityIfStationary(acceleration: CMAcceleration) {
-        let threshold = 0.05 // Threshold for minimal acceleration
-        
-        // Check if the magnitude of acceleration is near zero
-        let magnitude = sqrt(pow(acceleration.x, 2) + pow(acceleration.y, 2) + pow(acceleration.z, 2))
-        
-        if magnitude < threshold {
-            motionVelocity = (0, 0, 0)
-        }
-    }
-    
+    //returns the magnitude of a 3 dimensional vector
     private func magnitude (value: (x: Double, y: Double, z: Double)) -> Double {
         return sqrt(pow(value.x, 2) + pow(value.y, 2) + pow(value.z, 2))
     }
     
-    private func ignoreSmallMovements(acceleration: CMAcceleration, threshold: Double = 0.05) -> CMAcceleration {
-        return CMAcceleration(
-            x: abs(acceleration.x) > threshold ? acceleration.x : 0,
-            y: abs(acceleration.y) > threshold ? acceleration.y : 0,
-            z: abs(acceleration.z) > threshold ? acceleration.z : 0
-        )
+    //sets the velocity component to 0 if it is less than the threshold, this removes small noises in velocity
+    private func removeVelocityNoise(threshold: Double) {
+        motionVelocity.x = abs(motionVelocity.x) > threshold ? motionVelocity.x : 0
+        motionVelocity.y = abs(motionVelocity.y) > threshold ? motionVelocity.y : 0
+        motionVelocity.z = abs(motionVelocity.z) > threshold ? motionVelocity.z : 0
     }
     
-    //if the acceleration is drasitcally different from the previous acceleration we can determine that hard shaking has been involed
-    private func detectShake(acceleration: CMAcceleration, threshold: Double = 0.5 * 9.81) -> CMAcceleration {
-        let magnitudeInitialAcceleration = magnitude(value: (x: self.motionAcceleration.x, y: self.motionAcceleration.y, z: self.motionAcceleration.z))
-        let magnitudeFinalAcceleration = magnitude(value: (x: acceleration.x, y: acceleration.y, z: acceleration.z))
+    //smooths out rapid movement such as shakes
+    private func applyLowPassFilter(newAcceleration: (x: Double, y: Double, z: Double)) -> (x: Double, y: Double, z: Double) {
+        //Smoothing factor for the low pass filter
+        let alpha: Double = 0.1;
         
-        let delta = abs(magnitudeFinalAcceleration - magnitudeInitialAcceleration)
+        return (alpha * newAcceleration.x + (1 - alpha) * motionAcceleration.x,
+                alpha * newAcceleration.y + (1 - alpha) * motionAcceleration.y,
+                alpha * newAcceleration.z + (1 - alpha) * motionAcceleration.z)
+    }
+    
+    //
+    private func applyHighPassFilter(newAcceleration: (x: Double, y: Double, z: Double)) -> (x: Double, y: Double, z: Double) {
+        var filteredAcceleration: (x: Double, y: Double, z: Double) = (0, 0, 0)
         
-        //within threshold
-        if delta < threshold {
-            return acceleration
+        // Smoothing factor for the high-pass filter
+        let alpha: Double = 0.1
+        
+        filteredAcceleration.x = newAcceleration.x - (alpha * (newAcceleration.x + motionAcceleration.x))
+        filteredAcceleration.y = newAcceleration.y - (alpha * (newAcceleration.y + motionAcceleration.y))
+        filteredAcceleration.z = newAcceleration.z - (alpha * (newAcceleration.z + motionAcceleration.z))
+        
+        motionAcceleration = newAcceleration
+        
+        return filteredAcceleration
+    }
+    
+    //combines the low and high pass filters
+    private func filterAcceleration(newAcceleration: (x: Double, y: Double, z: Double)) -> (x: Double, y: Double, z: Double) {
+        let lowPassFiltered = applyLowPassFilter(newAcceleration: newAcceleration)
+        
+        let highPassFiltered = applyHighPassFilter(newAcceleration: lowPassFiltered)
+        
+        return highPassFiltered
+    }
+    
+    //gradually decrease the velocity if the acceleration is near zero
+    private func reduceVelocityIfStationary(dt: Double, threshold: Double = 0.05) {
+        let magnitude = magnitude(value: motionAcceleration)
+        
+        // Check if the magnitude of acceleration is near zero
+        if (magnitude < threshold) {
+            //graduall decrease
+            motionVelocity.x *= max(1.0 - (dt * 0.5), 0)
+            motionVelocity.y *= max(1.0 - (dt * 0.5), 0)
+            motionVelocity.z *= max(1.0 - (dt * 0.5), 0)
         }
-        //shake detected
-        else{
-            print("Shake detected")
-            return CMAcceleration(x: 0, y: 0, z: 0)
-        }
-        
     }
 }

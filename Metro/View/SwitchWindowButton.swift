@@ -1,10 +1,3 @@
-//
-//  SwitchWindowButton.swift
-//  Metro
-//
-//  Created by Jason Li on 11/24/24.
-//
-
 import SwiftUI
 
 struct Page1: View {

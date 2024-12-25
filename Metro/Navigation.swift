@@ -9,9 +9,10 @@ import UserNotifications
 class Navigation: ObservableObject{
     
     //distance to alert notification to pop up in miles
-    private let alertDistance: Double = 0.75
-    private let arrivedDistance: Double = 0.25
+    private let alertGPSDistance: Double = 0.75
+    private let arrivedGPSDistance: Double = 0.25
     
+    //distance from the stations to alert the user
     private let alertMotionDistance: Double = 0.45
     private let arrivedMotionDistance: Double = 0.0
     
@@ -82,86 +83,93 @@ class Navigation: ObservableObject{
     }
     
     //sets the fields string to the according data
-    public func returnStatus(){
+    public func updateStatus(){
         //reset alerts
         var newAlertTitle = ""
         var newAlertBody = ""
         
         //update speed
-        travelingSpeed = "(GPS) Traveling at " + String(Navigation.convertSpeed(speed:LocationManager.shared.gpsSpeed)) + " mph\n(Motion) Traveling at " + String(Navigation.convertSpeed(speed: LocationManager.shared.motionSpeed)) + " mph"
+        let GPSSpeed: Double = Navigation.convertSpeed(speed:LocationManager.shared.gpsSpeed)
+        let MotionSpeed: Double = Navigation.convertSpeed(speed: LocationManager.shared.motionSpeed)
         
-        print("GPS " + String(Navigation.convertSpeed(speed:LocationManager.shared.gpsSpeed)))
-        print("Motion " + String(Navigation.convertSpeed(speed: LocationManager.shared.motionSpeed)))
+        travelingSpeed = "(GPS) Traveling at \(GPSSpeed) mph\n(Motion) Traveling at \(MotionSpeed) mph"
         
+        //if path is empty the destination is reached
         if (path.isEmpty){
             nextDestinationStatus = "Destination Reached!"
             return
         }
         
         //next station in path
-        let stationDestination: Station = path.first!
-        let distance: Double = calculateDistance(lat: listOfCoords[stationDestination.name]!.lat, lon: listOfCoords[stationDestination.name]!.lon)
-        //print(distance)
+        let nextDestination: Station = path.first!
         
+        //distance from the users current location from the next station
+        var GPSDistance: Double = calculateDistance(lat: listOfCoords[nextDestination.name]!.lat, lon: listOfCoords[nextDestination.name]!.lon)
+        var MotionDistance: Double = distanceToNext - LocationManager.shared.motionDistanceTraveled / 1609
+    
         
         //arriving at the station
-        if (distance <= arrivedDistance || distanceToNext - LocationManager.shared.motionDistanceTraveled / 1609 <= arrivedMotionDistance){
-            nextDestinationStatus = "Arriving at \(stationDestination.name) Station"
-            
+        if (GPSDistance <= arrivedGPSDistance || MotionDistance <= arrivedMotionDistance){
+            nextDestinationStatus = "Arriving at \(nextDestination.name) Station"
             
             //check if switching train list is empty meaning only need to say how many stops till destination
             if (orderOfStationSwitch.isEmpty){
-                newAlertTitle = "Arrived at \(stationDestination.name) Station"
+                newAlertTitle = "Arrived at \(nextDestination.name) Station"
                 newAlertBody = "\(numberOfStopsAway(name: path.last!.name)) stops away from \(path.last!.name)"
             }
             
             //check if it is a switching train time, greater than 1 means you actually need to switch
-            else if (stationsToSwitch.keys.contains(stationDestination) && stationsToSwitch.count > 1){
-                newAlertTitle = "Arrived at \(stationDestination.name) Station"
+            else if (stationsToSwitch.keys.contains(nextDestination) && stationsToSwitch.count > 1){
+                newAlertTitle = "Arrived at \(nextDestination.name) Station"
                 newAlertBody = "Switch to "  + stationsToSwitch[orderOfStationSwitch.first!]!
                 
-                //notification to switch to different trai
-                
-                nextDestinationStatus += "\n!!Switch to" + String(stationsToSwitch[orderOfStationSwitch[1]]!) + "!!"
+                //notification to switch to different train
+                nextDestinationStatus += "\n!!Switch to \(stationsToSwitch[orderOfStationSwitch[1]]!) !!"
                 
                 //remove train swap
-                let indexOfSwap = stationsToSwitch.index(forKey: stationDestination)!
+                let indexOfSwap = stationsToSwitch.index(forKey: nextDestination)!
                 stationsToSwitch.remove(at: indexOfSwap)
                 orderOfStationSwitch.removeFirst()
             }
             
             //notification for when you still need to swtich trains later so the body should say that
             else{
-                newAlertTitle = "Arrived at \(stationDestination.name) Station"
-                newAlertBody = "Switching Trains at " + orderOfStationSwitch.first!.name + " with \(numberOfStopsAway(name: orderOfStationSwitch.first!.name)) stops away!"
+                newAlertTitle = "Arrived at \(nextDestination.name) Station"
+                newAlertBody = "Switching Trains at \(orderOfStationSwitch.first!.name) with \(numberOfStopsAway(name: orderOfStationSwitch.first!.name)) stops away!"
             }
             
             //remove the train from path
             let first = path.removeFirst()
+            //update the distance to the next station
             if let second = path.first{
                 distanceToNext = calculateDistance(lat1: listOfCoords[first.name]!.lat, lon1: listOfCoords[first.name]!.lon, lat2: listOfCoords[second.name]!.lat, lon2: listOfCoords[second.name]!.lon)
                 LocationManager.shared.resetValuesForNextTrip()
             }
         }
         //about to arrive at the station
-        else if (distance <= alertDistance || distanceToNext - LocationManager.shared.motionDistanceTraveled / 1609 <= alertMotionDistance){
-            nextDestinationStatus = "About to Arrive at \(stationDestination.name) Station"
+        else if (GPSDistance <= alertGPSDistance || MotionDistance <= alertMotionDistance){
+            nextDestinationStatus = "About to Arrive at \(nextDestination.name) Station"
             
-            if orderOfStationSwitch.first == stationDestination {
-                newAlertTitle = "About to arrive at \(stationDestination.name) Station"
+            if orderOfStationSwitch.first == nextDestination {
+                newAlertTitle = "About to arrive at \(nextDestination.name) Station"
                 newAlertBody = "Get ready to switch to " + stationsToSwitch[orderOfStationSwitch.first!]!
             }
         }
         
         //not arriving soon
         else{
-            nextDestinationStatus = "Going to \(stationDestination.name) Station"
+            nextDestinationStatus = "Going to \(nextDestination.name) Station"
             
             //check if the closest station is in the path. If it is remove the list until its reached
-            let closestStation:String = findClosestStation()
-            if (containsName(name:closestStation) && path.first!.name != closestStation){
+            let closestStation: String = findClosestStation()
+            
+            //if the closest station is in the path remove all other stations leading up to it
+            if (containsName(name: closestStation) && path.first!.name != closestStation){
+                //until the path's first is not the closest station
                 while path.first!.name != closestStation{
                     
+                    //if the next station in the path is associated with the first station swap
+                    //remove it from the orderOfStationSwitch list and stationsToSwtich map
                     if (orderOfStationSwitch.first == path.first){
                         orderOfStationSwitch.removeFirst()
                     }
@@ -170,42 +178,49 @@ class Navigation: ObservableObject{
                     }
                     print("Found closer station")
                     
-                    let first = path.removeFirst()
+                    //remove it
+                    path.removeFirst()
+                    //update the distance to next and reset the motion distance
                     if let second = path.first{
                         distanceToNext = calculateDistance(lat: listOfCoords[second.name]!.lat, lon: listOfCoords[second.name]!.lon)
-                        //distanceToNext = calculateDistance(lat1: listOfCoords[first.name]!.lat, lon1: listOfCoords[first.name]!.lon, lat2: listOfCoords[second.name]!.lat, lon2: listOfCoords[second.name]!.lon)
                         LocationManager.shared.resetValuesForNextTrip()
                     }
                 }
                 newAlertTitle = "Closer station found!"
-                newAlertBody = "Changing next Station to " + path.first!.name
+                newAlertBody = "Changing next Station to \(path.first!.name)"
             }
             
         }
         
+        //check if it is empty after the prev if statements
         if (path.isEmpty){
             nextDestinationStatus = "Destination Reached!"
             return
         }
         
+        //update distance if the next destination is passed
+        GPSDistance = truncate(value: calculateDistance(lat: listOfCoords[nextDestination.name]!.lat, lon: listOfCoords[nextDestination.name]!.lon))
+        MotionDistance = truncate(value: distanceToNext - LocationManager.shared.motionDistanceTraveled / 1609)
         
-        //show distance and speed
-        let distance2Deci: Double = Double(round(distance * 1000)/1000)
-        
-        distanceFromNextDestination = "(GPS) \(distance2Deci) miles away\n(Motion) \(distanceToNext - (LocationManager.shared.motionDistanceTraveled) / 1609) miles away"
+        distanceFromNextDestination = "(GPS) \(GPSDistance) miles away\n(Motion) \(MotionDistance) miles away"
         
         nextStations = getNextStations(count: 5)
         
+        //create the switching station text
         switchingStationText = ""
-        for i in orderOfStationSwitch {
-            switchingStationText += "\nTake the " + String(stationsToSwitch[i]!) + " until \(i) Station\n"
+        //orderOfStationSwitch has the order and stationsToSwtich has the stations to swtich to
+        for current in orderOfStationSwitch {
+            switchingStationText += "\nTake the \(stationsToSwitch[current]!) until \(current) Station\n"
             
-            if i != orderOfStationSwitch.last{
-                switchingStationText += "\(numberOfStopsAway(name: i.name)) stops away\n"
+            if current != orderOfStationSwitch.last{
+                switchingStationText += "\(numberOfStopsAway(name: current.name)) stops away\n"
             }
         }
+        
+        //update the total stops away from the destination
         stopsAwayFromDestination = "\(numberOfStopsAway(name: path.last!.name)) stops away from \(path.last!.name)"
         
+        //if the alert body is not empty it means that there should be an alert
         if (!newAlertBody.isEmpty && !newAlertTitle.isEmpty){
             scheduleNotification(title: alertTitle, body: alertBody)
             triggerAlert(title: newAlertTitle, body: newAlertBody)
@@ -221,6 +236,10 @@ class Navigation: ObservableObject{
             self.alertTitle = ""
             self.alertBody = ""
         }
+    }
+    
+    public func getMotionDistanceTraveled() -> Double {
+        return truncate(value: LocationManager.shared.motionDistanceTraveled / 1609)
     }
     
     // Request notification permissions
@@ -355,12 +374,13 @@ class Navigation: ObservableObject{
         return d
     }
     
-    
-    private func degToRad(deg: Double) -> Double{
+    //converts degrees to radians
+    private func degToRad(deg: Double) -> Double {
         return deg * (Double.pi/180.0)
     }
     
-    //public func printCords() -> String{
-     //   return coordinates.lat.description + " " + coordinates.lon.description
-    //}
+    //truncates the value to the thousands place
+    private func truncate(value: Double) -> Double {
+        return round(value * 1000) / 1000;
+    }
 }
